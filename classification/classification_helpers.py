@@ -64,10 +64,11 @@ from pydantic import BaseModel, Field
 from openai import OpenAI
 
 
-def _client(api_key: str | None, base_url: str | None) -> OpenAI:
+def _client(api_key: str | None = None, base_url: str | None = None, **kwargs) -> OpenAI:
     return OpenAI(
         api_key=api_key or os.environ.get("OPENAI_API_KEY"),
         base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
+        **kwargs,
     )
 
 
@@ -109,11 +110,12 @@ def classify_company_industry(
     model: str = "gpt-4.1-mini-2025-04-14",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> list[Industry]:
     """Mirrors get_companies_industry(). `companies` is a list of dicts with
     whatever raw fields you have (domain, linkedin_url, official site text,
     etc.) — the model fills in industry + approx_employee_size for each."""
-    client = _client(api_key, base_url)
+    client = _client(api_key, base_url, **kwargs)
     completion = client.beta.chat.completions.parse(
         model=model,
         messages=[
@@ -127,9 +129,10 @@ def classify_company_industry(
         response_format=CompanyIndustry,
     )
     u = completion.usage
+    cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
     print(f"[classify_company_industry] input={u.prompt_tokens} "
-          f"cached={u.prompt_tokens_details.cached_tokens} "
-          f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+          f"cached={cached_tokens} "
+          f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
           f"output={u.completion_tokens}")
     message = completion.choices[0].message
     return message.parsed.companies if message.parsed else []
@@ -150,6 +153,7 @@ def extract_email_pattern(
     model: str = "gpt-4.1-mini",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> str | None:
     """Mirrors extract_email_pattern(). Infers the {first_name}.{last_name}@{domain}
     -style pattern from one known (name, email) pair."""
@@ -174,7 +178,7 @@ def extract_email_pattern(
     ]
     Output format example: {{"email_pattern":"{{first_name}}.{{last_name}}@{{domain}}"}}
     """
-    client = _client(api_key, base_url)
+    client = _client(api_key, base_url, **kwargs)
     completion = client.beta.chat.completions.parse(
         model=model,
         messages=[
@@ -184,9 +188,10 @@ def extract_email_pattern(
         response_format=EmailPatternResponse,
     )
     u = completion.usage
+    cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
     print(f"[extract_email_pattern] input={u.prompt_tokens} "
-          f"cached={u.prompt_tokens_details.cached_tokens} "
-          f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+          f"cached={cached_tokens} "
+          f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
           f"output={u.completion_tokens}")
     message = completion.choices[0].message
     return message.parsed.email_pattern if message.parsed else None
@@ -248,12 +253,13 @@ def predict_email_status(
     model: str = "o4-mini",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> str | None:
     """Mirrors email_status_predict(). `prompt` is normally
     EMAIL_STATUS_PROMPT_TEMPLATE.format(email_content=...). Uses a REASONING
     model (o4-mini, reasoning_effort="high") — if your open-model target
     doesn't support reasoning_effort, drop that kwarg."""
-    client = _client(api_key, base_url)
+    client = _client(api_key, base_url, **kwargs)
     try:
         response = client.beta.chat.completions.parse(
             model=model,
@@ -267,9 +273,10 @@ def predict_email_status(
             response_format=EmailStatus,
         )
         u = response.usage
+        cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
         print(f"[predict_email_status] input={u.prompt_tokens} "
-              f"cached={u.prompt_tokens_details.cached_tokens} "
-              f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+              f"cached={cached_tokens} "
+              f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
               f"output={u.completion_tokens}")
         message = response.choices[0].message
         return message.parsed.status.value if message.parsed else None
@@ -319,10 +326,11 @@ def predict_delivery_failure(
     model: str = "gpt-4.1-mini",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> str | None:
     """Mirrors delivery_failure_predict(). `prompt` is normally
     DELIVERY_FAILURE_PROMPT_TEMPLATE.format(subject=..., body_content=...)."""
-    client = _client(api_key, base_url)
+    client = _client(api_key, base_url, **kwargs)
     try:
         response = client.beta.chat.completions.parse(
             model=model,
@@ -346,9 +354,10 @@ def predict_delivery_failure(
             response_format=DeliveryFailureClassification,
         )
         u = response.usage
+        cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
         print(f"[predict_delivery_failure] input={u.prompt_tokens} "
-              f"cached={u.prompt_tokens_details.cached_tokens} "
-              f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+              f"cached={cached_tokens} "
+              f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
               f"output={u.completion_tokens}")
         message = response.choices[0].message
         return message.parsed.failure_type.value if message.parsed else None

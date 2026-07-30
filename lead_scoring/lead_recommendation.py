@@ -153,10 +153,11 @@ INPUT FORMAT
 The user message contains two sections: the ORIGINAL REQUEST (the criteria the leads were generated to satisfy — treat this as the ground truth for relevance and business-logic checks) followed by LEADS TO EVALUATE (the lead recommendations to audit). Evaluate strictly against the original request and return only the structured assessment."""
 
 
-def _client(api_key: str | None, base_url: str | None) -> OpenAI:
+def _client(api_key: str | None = None, base_url: str | None = None, **kwargs) -> OpenAI:
     return OpenAI(
         api_key=api_key or os.environ.get("OPENAI_API_KEY"),
         base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
+        **kwargs,
     )
 
 
@@ -164,12 +165,13 @@ def _client(api_key: str | None, base_url: str | None) -> OpenAI:
 def top_lead_generate(
     prompt: str,
     *,
-    model: str = "gpt-4.1-mini",
+    model: str = "claude-sonnet-5",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> list[CompanyLeads] | None:
     """Mirrors top_lead_generate(). Returns the generated companies/leads list."""
-    client = _client(api_key, base_url)
+    client = _client(api_key, base_url, **kwargs)
     try:
         response = client.beta.chat.completions.parse(
             model=model,
@@ -182,9 +184,10 @@ def top_lead_generate(
             response_format=TopLeads,
         )
         u = response.usage
+        cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
         print(f"[top_lead_generate] input={u.prompt_tokens} "
-              f"cached={u.prompt_tokens_details.cached_tokens} "
-              f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+              f"cached={cached_tokens} "
+              f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
               f"output={u.completion_tokens}")
         parsed = response.choices[0].message.parsed
         return parsed.companies if parsed else None
@@ -198,13 +201,14 @@ def quality_check_leads(
     companies: list[CompanyLeads],
     original_prompt: str,
     *,
-    model: str = "gpt-4.1-mini",
+    model: str = "claude-sonnet-5",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> TopLeadsQualityCheck | None:
     """Mirrors quality_check_leads(). Audits `companies` against the original
     request and returns a structured score + itemized issues, or None on failure."""
-    client = _client(api_key, base_url)
+    client = _client(api_key, base_url, **kwargs)
     try:
         companies_data = []
         for company in companies:
@@ -234,9 +238,10 @@ def quality_check_leads(
             response_format=TopLeadsQualityCheck,
         )
         u = response.usage
+        cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
         print(f"[quality_check_leads] input={u.prompt_tokens} "
-              f"cached={u.prompt_tokens_details.cached_tokens} "
-              f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+              f"cached={cached_tokens} "
+              f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
               f"output={u.completion_tokens}")
         return response.choices[0].message.parsed
     except Exception as e:
@@ -250,14 +255,15 @@ def fix_lead_recommendations(
     quality_report: QualityReport,
     original_prompt: str,
     *,
-    model: str = "gpt-4.1-mini",
+    model: str = "claude-sonnet-5",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> list[CompanyLeads]:
     """Mirrors fix_lead_recommendations(). Re-generates addressing only the
     high/critical issues the QA pass found; returns `companies` unchanged if
     there's nothing critical to fix or the fix call itself fails."""
-    client = _client(api_key, base_url)
+    client = _client(api_key, base_url, **kwargs)
     try:
         critical_issues = [i for i in quality_report.issues if i.severity in ("high", "critical")]
         if not critical_issues:
@@ -294,9 +300,10 @@ def fix_lead_recommendations(
             response_format=TopLeads,
         )
         u = response.usage
+        cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
         print(f"[fix_lead_recommendations] input={u.prompt_tokens} "
-              f"cached={u.prompt_tokens_details.cached_tokens} "
-              f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+              f"cached={cached_tokens} "
+              f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
               f"output={u.completion_tokens}")
         parsed = response.choices[0].message.parsed
         return parsed.companies if parsed else companies
@@ -312,10 +319,11 @@ def top_lead_generate_with_quality_check(
     model: str = "gpt-4.1-mini",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> list[CompanyLeads] | None:
     """Mirrors top_lead_generate_with_quality_check(). 2 calls if QA passes
     (score >= 80 AND is_acceptable), 3 calls if QA fails and a fix is needed."""
-    kw = dict(model=model, api_key=api_key, base_url=base_url)
+    kw = dict(model=model, api_key=api_key, base_url=base_url, **kwargs)
     try:
         print("Generating initial lead recommendations...")
         initial_companies = top_lead_generate(prompt, **kw)

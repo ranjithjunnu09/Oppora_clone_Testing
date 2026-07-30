@@ -48,11 +48,13 @@ def generate_ai_email(
     model: str = "gpt-4.1-mini-2025-04-14",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> tuple[str | None, str | None]:
     """Returns (subject, body). Mirrors Oppora's generate_ai_email()."""
     client = OpenAI(
         api_key=api_key or os.environ.get("OPENAI_API_KEY"),
         base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
+        **kwargs,
     )
     messages = [
         {"role": "system",

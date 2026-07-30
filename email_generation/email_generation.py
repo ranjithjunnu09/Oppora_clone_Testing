@@ -62,6 +62,10 @@ class FollowUpStep(BaseModel):
     subject: Optional[str] = Field(None, description="None means same thread (no new subject)")
     body: str = Field(description="HTML email body. MUST end with a professional sign-off like '<p>Best,<br>{from_first_name}</p>'. Use <p> tags. Keep shorter than initial email.")
     days_after: int = Field(ge=1, description="Days after previous step")
+    #  Present in production's FollowUpStep and previously missing here. The
+      #  schema IS the structured-output contract sent to the model, so omitting
+      #  a field changes what gets generated — this was a real fidelity gap.
+    angle: str = Field(description="e.g. 'bump', 'social_proof', 'new_angle', 'breakup'")
 
 
 class EmailSequence(BaseModel):
@@ -408,6 +412,7 @@ def generate_email_sequence(
     model: str = "gpt-4.1-mini",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> dict:
     """Generate an email sequence exactly as Oppora does. Returns a dict:
         {"initial": {"subject","body"},
@@ -416,6 +421,7 @@ def generate_email_sequence(
     client = OpenAI(
         api_key=api_key or os.environ.get("OPENAI_API_KEY"),
         base_url=base_url or os.environ.get("OPENAI_BASE_URL"),  # None -> real OpenAI
+        **kwargs,
     )
 
     system_prompt, user_prompt = build_personalized_email_prompt(
@@ -451,22 +457,23 @@ def generate_email_sequence(
         try:
             resp = client.chat.completions.create(model=model, messages=messages, response_format=schema)
             content = resp.choices[0].message.content
-            return EmailSequence(**json.loads(content)).model_dump()
+            data = json.loads(content)
         except Exception:
             resp = client.chat.completions.create(
                 model=model,
+                temperature=0.7,
                 messages=messages + [{
                     "role": "system",
                     "content": "Return ONLY a JSON object with keys 'initial' "
                                "({subject, body}) and 'follow_ups' (list of "
                                "{subject, body, days_after}). No prose, no markdown.",
                 }],
-                temperature=0.7,
             )
             content = resp.choices[0].message.content or ""
             start, end = content.find("{"), content.rfind("}")
             data = json.loads(content[start:end + 1])
-            return EmailSequence(**data).model_dump()
+
+        return EmailSequence(**data).model_dump()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

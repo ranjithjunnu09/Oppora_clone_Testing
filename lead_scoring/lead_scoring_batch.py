@@ -68,8 +68,8 @@ from openai import OpenAI
 class ScoredLead(BaseModel):
     """A lead from the analyzed batch with its fit score against the filters"""
     lead_id: int = Field(description="Lead ID from the analyzed batch")
-    score: int = Field(description="Fit score 0-100. 100 = perfect match on every filter. Higher = better match.", ge=0, le=100)
-    priority_tier: int = Field(default=0, ge=0, description="Lowest priority tier whose criteria this lead matches: 0 = primary (highest priority), 1 = first fallback, 2 = second, etc. Always 0 when no priority ladder is provided.")
+    score: int = Field(description="Fit score 0-100. 100 = perfect match on every filter. Higher = better match. Must be between 0 and 100.")
+    priority_tier: int = Field(default=0, description="Lowest priority tier whose criteria this lead matches: 0 = primary (highest priority), 1 = first fallback, 2 = second, etc. Always 0 when no priority ladder is provided. Must be >= 0.")
 
 
 class LeadFilterResult(BaseModel):
@@ -249,6 +249,7 @@ def score_leads_batch(
     model: str = "gpt-4.1-mini",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> LeadFilterResult | None:
     """One batch (<=200 leads) scored in one call. Returns None on failure
     (production continues to the next batch in that case)."""
@@ -259,6 +260,7 @@ def score_leads_batch(
     client = OpenAI(
         api_key=api_key or os.environ.get("OPENAI_API_KEY"),
         base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
+        **kwargs,
     )
     try:
         response = client.beta.chat.completions.parse(
@@ -268,9 +270,10 @@ def score_leads_batch(
             response_format=LeadFilterResult,
         )
         u = response.usage
+        cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
         print(f"[score_leads_batch] input={u.prompt_tokens} "
-              f"cached={u.prompt_tokens_details.cached_tokens} "
-              f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+              f"cached={cached_tokens} "
+              f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
               f"output={u.completion_tokens}")
         return response.choices[0].message.parsed
     except Exception as e:

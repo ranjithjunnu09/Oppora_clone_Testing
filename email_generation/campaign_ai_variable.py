@@ -85,6 +85,7 @@ def generate_ai_template_response(
     model: str = "gpt-4.1-mini",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> str:
     """Mirrors _generate_ai_template_response(). `prompt` is the AiTemplate's
     raw variable prompt (e.g. "Write one line referencing {first_name}'s role
@@ -119,6 +120,7 @@ def generate_ai_template_response(
     client = OpenAI(
         api_key=api_key or os.environ.get("OPENAI_API_KEY"),
         base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
+        **kwargs,
     )
     response = client.chat.completions.create(
         model=model,
@@ -130,9 +132,10 @@ def generate_ai_template_response(
         max_tokens=300,
     )
     u = response.usage
+    cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
     print(f"[generate_ai_template_response] input={u.prompt_tokens} "
-          f"cached={u.prompt_tokens_details.cached_tokens} "
-          f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+          f"cached={cached_tokens} "
+          f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
           f"output={u.completion_tokens}")
 
     return strip_em_dashes(response.choices[0].message.content)

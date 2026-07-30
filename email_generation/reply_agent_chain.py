@@ -69,10 +69,11 @@ from pydantic import BaseModel, Field
 from openai import OpenAI
 
 
-def _client(api_key: str | None, base_url: str | None) -> OpenAI:
+def _client(api_key: str | None = None, base_url: str | None = None, **kwargs) -> OpenAI:
     return OpenAI(
         api_key=api_key or os.environ.get("OPENAI_API_KEY"),
         base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
+        **kwargs,
     )
 
 
@@ -84,9 +85,10 @@ def _call(client, model, system, user, schema, label):
         response_format=schema,
     )
     u = response.usage
+    cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
     print(f"[{label}] input={u.prompt_tokens} "
-          f"cached={u.prompt_tokens_details.cached_tokens} "
-          f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+          f"cached={cached_tokens} "
+          f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
           f"output={u.completion_tokens}")
     return response.choices[0].message.parsed
 
@@ -399,9 +401,10 @@ def draft_reply(
                   {"role": "user", "content": prospect_message}],
     )
     u = response.usage
+    cached_tokens = getattr(u.prompt_tokens_details, "cached_tokens", 0) if getattr(u, "prompt_tokens_details", None) else 0
     print(f"[draft_reply] input={u.prompt_tokens} "
-          f"cached={u.prompt_tokens_details.cached_tokens} "
-          f"({u.prompt_tokens_details.cached_tokens / u.prompt_tokens * 100:.1f}%) "
+          f"cached={cached_tokens} "
+          f"({cached_tokens / (u.prompt_tokens or 1) * 100:.1f}%) "
           f"output={u.completion_tokens}")
     return strip_em_dashes(response.choices[0].message.content)
 
@@ -552,12 +555,13 @@ def run_reply_pipeline(
     model: str = "gpt-4.1-mini",
     api_key: str | None = None,
     base_url: str | None = None,
+    **kwargs,
 ) -> dict:
     """Runs the real node sequence: classify_intent -> decide_attachments ->
     draft_reply -> guardrail_check -> extract_referred_contacts ->
     (autonomy? ai_send_decision : skip). Returns a dict with every
     intermediate result, mirroring the graph's shared state object."""
-    kw = dict(model=model, api_key=api_key, base_url=base_url)
+    kw = dict(model=model, api_key=api_key, base_url=base_url, **kwargs)
 
     intent_result = classify_intent(prospect_message, **kw)
     intent = intent_result.intent.value
